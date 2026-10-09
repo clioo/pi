@@ -386,6 +386,7 @@ describe("MCP OAuth", () => {
 		expect(provider.tokenSet?.access_token).toBe("a1");
 	});
 
+	// #10737
 	it("asks for authorization when the server denies the refresh with access_denied", async () => {
 		const grants: string[] = [];
 		const origin = await listen(async (request, response, serverOrigin) => {
