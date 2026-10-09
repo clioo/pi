@@ -386,6 +386,52 @@ describe("MCP OAuth", () => {
 		expect(provider.tokenSet?.access_token).toBe("a1");
 	});
 
+	it("asks for authorization when the server denies the refresh with access_denied", async () => {
+		const grants: string[] = [];
+		const origin = await listen(async (request, response, serverOrigin) => {
+			const url = new URL(request.url ?? "/", serverOrigin);
+			if (url.pathname === "/token") {
+				grants.push(new URLSearchParams(await readBody(request)).get("refresh_token") ?? "");
+				// What Ory Hydra answers when its token hook rejects the refresh.
+				response.writeHead(403, { "content-type": "application/json" });
+				response.end(
+					JSON.stringify({
+						error: "access_denied",
+						error_description: "The token hook target responded with an error.",
+					}),
+				);
+				return;
+			}
+			response.statusCode = 404;
+			response.end();
+		});
+		const provider = new TestOAuthProvider("http://127.0.0.1/callback");
+		provider.client = { client_id: "client" };
+		provider.tokenSet = { access_token: "a1", refresh_token: "r1", token_type: "Bearer" };
+		provider.discovery = {
+			authorizationServerUrl: origin,
+			authorizationServerMetadata: {
+				issuer: origin,
+				authorization_endpoint: `${origin}/authorize`,
+				token_endpoint: `${origin}/token`,
+				response_types_supported: ["code"],
+			},
+		};
+		const auth = adaptOAuthProvider(provider);
+		await expect(
+			auth.onUnauthorized?.({
+				response: new Response(null, { status: 401, headers: { "www-authenticate": "Bearer" } }),
+				serverUrl: new URL(`${origin}/mcp`),
+				fetch,
+				token: "a1",
+			}),
+		).rejects.toBeInstanceOf(McpOAuthAuthorizationRequiredError);
+		expect(grants).toEqual(["r1"]);
+		// The rejected refresh token is discarded, so signing in again goes to the browser.
+		expect(provider.tokenSet).toBeUndefined();
+		expect(provider.authorizationUrl?.pathname).toBe("/authorize");
+	});
+
 	it("binds persisted credentials to the exact MCP server URL", async () => {
 		const store = new MemoryOAuthStateStore();
 		const first = new McpOAuthProvider({

@@ -434,7 +434,8 @@ export async function authorizeMcp(provider: OAuthClientProvider, options: OAuth
 			await provider.invalidateCredentials?.("all");
 			return runFlow(provider, options);
 		}
-		if (error instanceof OAuthError && error.code === "invalid_grant") {
+		// The grant is no longer usable. Ory Hydra reports a refresh its token hook rejects as access_denied.
+		if (error instanceof OAuthError && (error.code === "invalid_grant" || error.code === "access_denied")) {
 			await provider.invalidateCredentials?.("tokens");
 			return runFlow(provider, options);
 		}
